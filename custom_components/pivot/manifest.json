@@ -1,0 +1,17 @@
+{
+  "domain": "pivot",
+  "name": "Pivot household tasks",
+  "version": "0.3.0",
+  "documentation": "https://github.com/Releah/pivot-home-assistant",
+  "dependencies": [
+    "websocket_api"
+  ],
+  "requirements": [],
+  "codeowners": [
+    "@Releah"
+  ],
+  "iot_class": "local_polling",
+  "config_flow": true,
+  "integration_type": "service",
+  "issue_tracker": "https://github.com/Releah/pivot-home-assistant/issues"
+}

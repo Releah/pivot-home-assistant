@@ -1,0 +1,61 @@
+{
+  "title": "Pivot household tasks",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Pivot",
+        "menu_options": {
+          "connection": "Authorize a new HA installation",
+          "existing": "Use an existing protected provisioning file"
+        }
+      },
+      "connection": {
+        "title": "Connect to Pivot",
+        "description": "Use the private HTTPS API origin, including its port. Supply the public CA certificate path on HA.",
+        "data": {
+          "origin": "Pivot API origin",
+          "ca_file": "CA certificate file",
+          "website_url": "Pivot website"
+        }
+      },
+      "enroll": {
+        "title": "Authorize this Home Assistant installation",
+        "description": "Sign into {website} as a Pivot administrator. Open Settings \u2192 Home Assistant. Paste this public key:\n\n{public_key}\n\nCompare fingerprint: {fingerprint}. Authorize the installation and paste the complete encrypted delivery JSON below. The private key stays on HA.",
+        "data": {
+          "envelope": "Encrypted installation delivery JSON"
+        }
+      },
+      "existing": {
+        "title": "Import existing setup",
+        "description": "Only the file path is saved in HA configuration. Existing credentials stay in the protected file.",
+        "data": {
+          "provisioning_file": "Protected provisioning file",
+          "website_url": "Pivot website"
+        }
+      }
+    },
+    "error": {
+      "invalid_connection": "Check the HTTPS origin, explicit port and readable CA file.",
+      "invalid_envelope": "Delivery does not match this installation key, or protected storage could not be written.",
+      "invalid_provisioning": "Check the file path, owner-only permissions and settings."
+    },
+    "abort": {
+      "already_configured": "Only one Pivot household installation is supported."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pivot connection",
+        "description": "Update the private API endpoint and trust certificate. Account links and credentials are preserved.",
+        "data": {
+          "origin": "HTTPS API origin with port",
+          "ca_file": "CA certificate file"
+        }
+      }
+    },
+    "error": {
+      "invalid_connection": "Check the HTTPS origin, explicit port and CA file."
+    }
+  }
+}
