@@ -39,6 +39,7 @@ class PivotConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._public_key = ''
         self._fingerprint = ''
         self._website = ''
+        self._connection_input = {}
 
     async def async_step_user(self, user_input=None):
         await self.async_set_unique_id('pivot-household')
@@ -50,6 +51,7 @@ class PivotConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_connection(self, user_input=None):
         errors = {}
         if user_input:
+            self._connection_input = {name:user_input[name] for name in ('origin','ca_file','website_url') if name in user_input}
             try:
                 self._settings = {'transport':'https', 'origin':user_input['origin'], 'ca_file':user_input['ca_file'], 'installation_credential':None, 'members':{}}
                 self._website = website(user_input['website_url'])
@@ -64,9 +66,9 @@ class PivotConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except (OSError, ValueError, TypeError, KeyError):
                 errors['base'] = 'invalid_connection'
         return self.async_show_form(step_id='connection', data_schema=vol.Schema({
-            vol.Required('origin', default='https://pivot-api.example.com:443'):str,
-            vol.Required('ca_file', default='/ssl/pivot-ca.pem'):str,
-            vol.Required('website_url', default='https://pivot.example.com'):str}), errors=errors)
+            vol.Required('origin', default=self._connection_input.get('origin', 'https://pivot-api.example.com:443')):str,
+            vol.Required('ca_file', default=self._connection_input.get('ca_file', '/ssl/pivot-ca.pem')):str,
+            vol.Required('website_url', default=self._connection_input.get('website_url', 'https://pivot.example.com')):str}), errors=errors)
 
     async def async_step_enroll(self, user_input=None):
         errors = {}
