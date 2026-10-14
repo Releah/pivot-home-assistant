@@ -153,7 +153,7 @@ async def async_setup_entry(hass, entry):
             domain_data['card_registered'] = True
         from homeassistant.components import frontend
         from .dashboard import async_setup_dashboard
-        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.4.0')
+        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.4.1')
         if await async_setup_dashboard(hass):
             domain_data['dashboard_owned'] = True
         domain_data['entry'] = entry.entry_id

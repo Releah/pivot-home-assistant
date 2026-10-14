@@ -10,7 +10,7 @@ class PivotTaskCard extends HTMLElement {
     const card=this.element('ha-card');card.header='My Pivot tasks';
     const body=this.element('div');body.style.padding='16px';card.append(body);this.append(card);
     this.button(body,'Refresh',()=>this.refresh());
-    let account;
+    let account;let stage='status';
     try {
       account=await this._hass.callWS({type:'pivot/link_status'});
       if(generation!==this.generation)return;
@@ -25,10 +25,20 @@ class PivotTaskCard extends HTMLElement {
         }else this.button(body,'Start linking my account',async()=>{await this._hass.callWS({type:'pivot/link',action:'start'});await this.refresh();});
         return;
       }
-      const {items}=await this._hass.callWS({type:'pivot/tasks'});if(generation!==this.generation)return;
+      stage='tasks';const {items}=await this._hass.callWS({type:'pivot/tasks'});if(generation!==this.generation)return;
       this.renderTasks(body,items,generation);
       if(account.pending)this.button(body,'Retry acknowledgement of delivered link',async()=>{await this._hass.callWS({type:'pivot/link',action:'acknowledge'});await this.refresh();});
-    }catch{if(generation===this.generation)body.append(this.element('p','Pivot unavailable or pairing required.'));}
+    }catch(error){if(generation===this.generation){
+      // Only fixed messages: never display upstream errors, URLs or credentials.
+      const message=error?.code==='unknown_command'
+        ? 'Home Assistant has not loaded the Pivot integration commands. Update Pivot in HACS, restart Home Assistant, and check Settings > Devices & services > Pivot.'
+        : error?.code==='access_denied'
+        ? 'Your signed-in Home Assistant account cannot access Pivot. Use an active personal account and check its Pivot link.'
+        : stage==='status'
+        ? 'Home Assistant could not read the local Pivot setup or account-link status. Check Settings > Devices & services > Pivot and the Home Assistant system logs.'
+        : 'Pivot task request failed. Check the API connection, certificate and account grant; refresh before retrying any completion.';
+      body.append(this.element('p',message));
+    }}
     finally {
       if(generation===this.generation && account?.linked) {
       this.button(body,'Review removing my account link',async()=>{

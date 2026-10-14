@@ -75,3 +75,9 @@ test('an earlier account response cannot repopulate the dashboard after switchin
  release({items:[{title:'Previous account private task'}]});await pending;
  const all=e=>[e.textContent||'',...(e.children||[]).flatMap(all)];assert.equal(all(card).join(' ').includes('Previous account private task'),false);
 });
+
+test('missing integration commands show setup instructions without exposing raw errors',async()=>{
+ const card=fixture(async()=>({}));card._hass.callWS=async()=>{throw {code:'unknown_command',message:'synthetic-sensitive-value'};};await card.refresh();
+ const body=card.children[0].children[0];const messages=body.children.map(e=>e.textContent||'').join(' ');
+ assert.ok(messages.includes('restart Home Assistant'));assert.equal(messages.includes('synthetic-sensitive-value'),false);
+});
