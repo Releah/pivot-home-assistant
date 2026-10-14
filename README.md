@@ -46,9 +46,24 @@ Pivot's installation and per-person credentials instead.
 6. Back in HA, review both account IDs and all permissions, then confirm. HA saves
    the grant before acknowledging delivery. Names/emails never auto-link accounts.
 
-## Task dashboard card
+## Automatic Pivot dashboard
 
-Add `/pivot/pivot-task-card.js` as a JavaScript module dashboard resource, then:
+After setup (or a Home Assistant restart following an update), **Pivot** appears
+in the sidebar. It contains a focus panel for the four highest-priority open
+tasks, a monthly calendar of target finish dates, all your open tasks and recent
+completions. Each signed-in person sees only their linked, permitted tasks.
+Priority 1 is highest. Calendar dates are Pivot planning targets, not deadlines.
+Older backend versions can show tasks but do not supply priorities/target dates;
+deploy the matching Pivot backend update to populate those panels.
+
+The integration registers its card module automatically and creates
+`pivot-dashboard.json` containing layout only. Existing dashboards and an
+existing generated file are preserved. An existing `pivot-tasks` dashboard takes
+precedence. Unloading the integration removes its sidebar registration while
+preserving the layout file. Update via HACS and restart Home Assistant to install
+version 0.4.0.
+
+For a smaller card on another dashboard, add:
 
 ```yaml
 type: custom:pivot-task-card

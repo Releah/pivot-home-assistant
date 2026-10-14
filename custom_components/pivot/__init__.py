@@ -151,6 +151,11 @@ async def async_setup_entry(hass, entry):
             await hass.http.async_register_static_paths([StaticPathConfig('/pivot/pivot-task-card.js',
                 str(Path(__file__).parent / 'www' / 'pivot-task-card.js'), False)])
             domain_data['card_registered'] = True
+        from homeassistant.components import frontend
+        from .dashboard import async_setup_dashboard
+        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.4.0')
+        if await async_setup_dashboard(hass):
+            domain_data['dashboard_owned'] = True
         domain_data['entry'] = entry.entry_id
         entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
         return True
@@ -163,6 +168,9 @@ async def _async_reload_entry(hass, entry):
 
 
 async def async_unload_entry(hass, entry):
+    from .dashboard import async_unload_dashboard
+    if hass.data.get(DOMAIN, {}).pop('dashboard_owned', False):
+        await async_unload_dashboard(hass)
     # Replace handlers with a safe error; loaded tasks/credentials are not retained.
     for command in ['pivot/tasks','pivot/complete','pivot/link','pivot/link_status','pivot/setup_identity']:
         # Each replacement needs its own fixed type schema.
