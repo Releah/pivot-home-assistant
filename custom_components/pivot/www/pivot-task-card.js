@@ -19,7 +19,20 @@ class PivotTaskCard extends HTMLElement {
         body.append(this.element('p',`Link your HA account (${account.ha_name}) to your own Pivot account.`));
         if(account.pending){
           body.append(this.element('p','Sign into your own Pivot account, open Settings > Home Assistant and enter this locator:'));
-          body.append(this.element('code',account.locator));
+          const locator=this.element('input');locator.type='text';locator.readOnly=true;locator.value=account.locator||'';
+          locator.setAttribute('aria-label','Pairing locator');locator.style.width='100%';locator.style.boxSizing='border-box';
+          locator.onclick=()=>locator.select();body.append(locator);
+          const copy=this.element('button','Copy locator');
+          copy.onclick=async()=>{
+            if(generation!==this.generation)return;
+            copy.disabled=true;
+            try{
+              await navigator.clipboard.writeText(locator.value);
+              if(generation===this.generation)copy.textContent='Copied';
+            }catch{
+              if(generation===this.generation){locator.focus();locator.select();copy.textContent='Selected — copy manually';}
+            }finally{copy.disabled=false;}
+          };body.append(copy);
           this.button(body,'Review approved account and permissions',()=>this.review(body,generation,account));
           this.button(body,'Cancel account linking',async()=>{await this._hass.callWS({type:'pivot/link',action:'cancel'});await this.refresh();});
         }else this.button(body,'Start linking my account',async()=>{await this._hass.callWS({type:'pivot/link',action:'start'});await this.refresh();});

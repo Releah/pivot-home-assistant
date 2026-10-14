@@ -4,13 +4,16 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 class Element {
   constructor(){this.children=[];this.style={};}
+  setAttribute(name,value){this[name]=value;}
+  select(){this.selected=true;}
+  focus(){this.focused=true;}
   append(...children){this.children.push(...children);}
   replaceChildren(...children){this.children=children;}
 }
-function fixture(callWS,type='pivot-task-card'){
+function fixture(callWS,type='pivot-task-card',clipboard={writeText:async()=>{}}){
   const cards=new Map();
   vm.runInNewContext(fs.readFileSync('custom_components/pivot/www/pivot-task-card.js','utf8'),{
-    window:{},HTMLElement:Element,document:{createElement:()=>new Element(),createTextNode:text=>({textContent:text})},
+    navigator:{clipboard},window:{},HTMLElement:Element,document:{createElement:()=>new Element(),createTextNode:text=>({textContent:text})},
     customElements:{get:name=>cards.get(name),define:(name,value)=>cards.set(name,value)}
   });
   const card=new (cards.get(type))();card._hass={callWS:async message=>message.type==='pivot/link_status'?{installation_ready:true,linked:true,ha_name:'Synthetic',subject:'synthetic-a'}:callWS(message),user:{id:'synthetic-a'}};return card;
@@ -80,4 +83,15 @@ test('missing integration commands show setup instructions without exposing raw 
  const card=fixture(async()=>({}));card._hass.callWS=async()=>{throw {code:'unknown_command',message:'synthetic-sensitive-value'};};await card.refresh();
  const body=card.children[0].children[0];const messages=body.children.map(e=>e.textContent||'').join(' ');
  assert.ok(messages.includes('restart Home Assistant'));assert.equal(messages.includes('synthetic-sensitive-value'),false);
+});
+
+test('locator can be copied and remains selectable when clipboard permission fails',async()=>{
+ for(const fail of [false,true]){
+  const copied=[];const card=fixture(async()=>({}),'pivot-task-card',{writeText:async value=>{if(fail)throw Error('denied');copied.push(value);}});
+  card._hass.callWS=async()=>({installation_ready:true,linked:false,pending:true,locator:'hl1.synthetic-locator',ha_name:'Synthetic'});
+  await card.refresh();const body=card.children[0].children[0],input=body.children.find(e=>e.type==='text'),button=body.children.find(e=>e.textContent==='Copy locator');
+  assert.equal(input.readOnly,true);await button.onclick();assert.equal(button.disabled,false);
+  if(fail){assert.equal(input.selected,true);assert.equal(input.focused,true);assert.ok(button.textContent.includes('copy manually'));}
+  else{assert.deepEqual(copied,['hl1.synthetic-locator']);assert.equal(button.textContent,'Copied');}
+ }
 });
