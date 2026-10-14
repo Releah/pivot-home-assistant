@@ -60,7 +60,10 @@ Refresh to check the result. Delivery acknowledgement can be retried from the
 card; each person can revoke their own link. Tasks are not shared HA entities or
 recorder history. Protect the HA host and backups: the host owner remains trusted.
 
-The Configure dialog updates HTTPS/CA settings without discarding credentials.
+The Configure dialog lets you change the API URL, CA certificate file and Pivot
+website URL. It shows your current values and preserves account links and
+credentials. Example addresses in the setup wizard must be replaced with your
+own deployment settings; no household addresses or people are preconfigured.
 Removing the integration preserves local credentials for recovery; revoke in
 Pivot before permanently removing the protected files.
 

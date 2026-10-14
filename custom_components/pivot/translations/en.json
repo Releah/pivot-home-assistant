@@ -47,10 +47,11 @@
     "step": {
       "init": {
         "title": "Pivot connection",
-        "description": "Update the private API endpoint and trust certificate. Account links and credentials are preserved.",
+        "description": "Update the HTTPS API address, trust certificate path and Pivot website. Existing account links and credentials are preserved.",
         "data": {
           "origin": "HTTPS API origin with port",
-          "ca_file": "CA certificate file"
+          "ca_file": "CA certificate file",
+          "website_url": "Pivot website"
         }
       }
     },

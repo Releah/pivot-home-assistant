@@ -115,14 +115,21 @@ class PivotConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class PivotOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         errors = {}
-        if user_input:
-            try:
-                path = self.config_entry.data['provisioning_file']
-                settings = await self.hass.async_add_executor_job(load_provisioning, path)
-                settings.update(transport='https', origin=user_input['origin'], ca_file=user_input['ca_file'])
-                await self.hass.async_add_executor_job(transport_settings, settings)
-                await self.hass.async_add_executor_job(save_private_json, path, settings)
+        current = {}
+        try:
+            path = self.config_entry.data['provisioning_file']
+            current = await self.hass.async_add_executor_job(load_provisioning, path)
+            if user_input:
+                updated = dict(current, transport='https', origin=user_input['origin'], ca_file=user_input['ca_file'])
+                url = website(user_input['website_url'])
+                await self.hass.async_add_executor_job(transport_settings, updated)
+                await self.hass.async_add_executor_job(save_private_json, path, updated)
+                self.hass.config_entries.async_update_entry(self.config_entry,
+                    data={**self.config_entry.data, 'website_url':url})
                 return self.async_create_entry(title='', data={})
-            except (OSError, ValueError, TypeError, KeyError):
-                errors['base'] = 'invalid_connection'
-        return self.async_show_form(step_id='init', data_schema=vol.Schema({vol.Required('origin'):str, vol.Required('ca_file'):str}), errors=errors)
+        except (OSError, ValueError, TypeError, KeyError):
+            errors['base'] = 'invalid_connection'
+        return self.async_show_form(step_id='init', data_schema=vol.Schema({
+            vol.Required('origin', default=current.get('origin', 'https://pivot-api.example.com:443')):str,
+            vol.Required('ca_file', default=current.get('ca_file', '/ssl/pivot-ca.pem')):str,
+            vol.Required('website_url', default=self.config_entry.data.get('website_url', 'https://pivot.example.com')):str}), errors=errors)
