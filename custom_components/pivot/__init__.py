@@ -116,8 +116,9 @@ async def async_setup(hass, config):
             connection.send_error(msg['id'], 'pivot_unavailable', 'Check Pivot configuration')
 
     @websocket_api.websocket_command({vol.Required('type'):'pivot/link',
-        vol.Required('action'):vol.In(['start','inspect','finish','acknowledge','cancel','unlink']),
-        vol.Optional('confirmation'): {vol.Required('userId'):str, vol.Required('consentId'):str}})
+        vol.Required('action'):vol.In(['start','start_return','inspect','finish','finish_return','acknowledge','cancel','unlink']),
+        vol.Optional('confirmation'): {vol.Required('userId'):str, vol.Required('consentId'):str},
+        vol.Optional('browser_return'): dict})
     @websocket_api.async_response
     async def link(hass, connection, msg):
         user = await hass.auth.async_get_user(connection.user.id)
@@ -125,10 +126,10 @@ async def async_setup(hass, config):
             connection.send_error(msg['id'], 'access_denied', 'Active personal account required')
             return
         try:
-            result = await manager.run(user.id, msg['action'], msg.get('confirmation'))
+            result = await manager.run(user.id, msg['action'], msg.get('confirmation'), msg.get('browser_return'))
             connection.send_result(msg['id'], result)
         except (OSError, ValueError, TypeError, KeyError, aiohttp.ClientError, asyncio.TimeoutError):
-            connection.send_error(msg['id'], 'link_failed', 'Check pairing status before retrying. Approval expires after five minutes.')
+            connection.send_error(msg['id'], 'link_failed', 'Error: linking could not be completed. Refresh to resume delivery, or restart account linking. New approvals last 24 hours.')
 
     websocket_api.async_register_command(hass, link_status)
     websocket_api.async_register_command(hass, link)
@@ -153,7 +154,7 @@ async def async_setup_entry(hass, entry):
             domain_data['card_registered'] = True
         from homeassistant.components import frontend
         from .dashboard import async_setup_dashboard
-        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.4.2')
+        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.5.0')
         if await async_setup_dashboard(hass):
             domain_data['dashboard_owned'] = True
         domain_data['entry'] = entry.entry_id
