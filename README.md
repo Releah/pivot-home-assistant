@@ -23,7 +23,7 @@ using `https://github.com/Releah/pivot-home-assistant`.
 - Firewall access restricted to the Home Assistant installation.
 
 The matching backend/UI-linking changes were developed on the Pivot branch
-`feature/ha-hacs-setup`. Creating this integration repository does not deploy
+`feature/ha-account-linking`. Creating this integration repository does not deploy
 those backend changes. The existing two-task route alone is not sufficient for
 UI pairing: private routing must additionally allow authenticated POST requests
 for `/api/ha/v1/link/start`, `inspect`, `finish`, `acknowledge`, `cancel` and `unlink`.
@@ -61,7 +61,7 @@ The integration registers its card module automatically and creates
 existing generated file are preserved. An existing `pivot-tasks` dashboard takes
 precedence. Unloading the integration removes its sidebar registration while
 preserving the layout file. Update via HACS and restart Home Assistant to install
-version 0.4.0.
+the 0.5.1 candidate after release approval.
 
 For a smaller card on another dashboard, add:
 
@@ -82,5 +82,22 @@ own deployment settings; no household addresses or people are preconfigured.
 Removing the integration preserves local credentials for recovery; revoke in
 Pivot before permanently removing the protected files.
 
-Development source: Pivot feature branch `feature/ha-hacs-setup`.
+Development source: Pivot feature branch `feature/ha-account-linking`.
 The standalone package does not include its Git history, backend or infrastructure.
+
+
+### Account connection (0.5.1 candidate)
+
+After the administrator has authorised the HA installation once, each person opens
+Pivot in HA and chooses **Connect to Pivot**, signs into their own Pivot account,
+and chooses **Allow Home Assistant** after selecting task permissions. The browser
+returns to HA to save and acknowledge the connection automatically. Both websites
+must use HTTPS for this automatic browser return.
+
+While waiting, **Cancel** removes only the signed-in HA person's attempt. **Retry**
+starts a fresh approval after expiry or an interrupted redemption; saved deliveries
+resume acknowledgement automatically. Manual codes and confirmation are available
+under **Advanced: manual connection**, including for HA accessed over HTTP.
+Installation keys and protected-file delivery remain administrator setup concerns.
+See [release verification and instructions](LINKING-RELEASE.md). Nothing is deployed
+by this source change.

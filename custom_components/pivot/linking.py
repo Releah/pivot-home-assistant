@@ -8,6 +8,13 @@ from pathlib import Path
 from .provisioning import load_provisioning, load_private_json, save_private_json
 
 
+class LinkRequestError(ValueError):
+    """A fixed upstream code, never raw response text or credentials."""
+    def __init__(self, code):
+        super().__init__('link_request_failed')
+        self.code = code
+
+
 class LinkManager:
     def __init__(self, path, executor, request):
         self.path = path
@@ -48,7 +55,7 @@ class LinkManager:
                 if previous:
                     # Revoke uncertain deliveries before replacement. Never discard
                     # a protected credential while its remote grant could be active.
-                    await call('cancel', {'pairingId':previous['pairingId'], 'redemptionProof':previous['redemptionProof']})
+                    await call('cancel', {})
                     pending.pop(subject)
                     settings['members'].pop(subject, None)
                     await self.executor(save_private_json, self.path, settings)
@@ -81,21 +88,35 @@ class LinkManager:
                 await self.executor(save_private_json, self.pending_path, pending)
                 return {'unlinked':True}
             value = pending.get(subject)
+            if not value and action == 'cancel':
+                # Approval may have finished while the waiting card's Cancel
+                # request was in flight. Honour that person's cancellation.
+                if subject in settings['members']:
+                    await call('cancel', {})
+                    settings['members'].pop(subject)
+                    await self.executor(save_private_json, self.path, settings)
+                return {'cancelled':True}
             if not value:
                 raise ValueError('pairing_required')
-            proof = {'pairingId':value['pairingId'], 'redemptionProof':value['redemptionProof']}
-            if action == 'inspect':
-                result = await call('inspect', proof)
-                # An explicit HA-person confirmation must match this server inspection.
-                return {'pairing':result['pairing'], 'approved_user_name':result.get('approvedUserName'),
-                        'awaiting_delivery': 'issued' in value, 'automatic_delivery':'browser_return' in value, 'delivery_uncertain':bool(value.get('redemption_started')) and 'issued' not in value}
             if action == 'cancel':
-                await call('cancel', proof)
+                await call('cancel', {})
                 pending.pop(subject)
                 settings['members'].pop(subject, None)
                 await self.executor(save_private_json, self.path, settings)
                 await self.executor(save_private_json, self.pending_path, pending)
                 return {'cancelled':True}
+            proof = {'pairingId':value['pairingId'], 'redemptionProof':value['redemptionProof']}
+            if action == 'inspect':
+                try:
+                    result = await call('inspect', proof)
+                except LinkRequestError as error:
+                    if error.code not in ('pairing_access_required', 'pairing_unavailable'):
+                        raise
+                    return {'pairing':{'status':'unavailable'}, 'awaiting_delivery':False}
+
+                # An explicit HA-person confirmation must match this server inspection.
+                return {'pairing':result['pairing'], 'approved_user_name':result.get('approvedUserName'),
+                        'link':result.get('link'), 'awaiting_delivery': 'issued' in value, 'automatic_delivery':'browser_return' in value, 'delivery_uncertain':bool(value.get('redemption_started')) and 'issued' not in value}
             if action not in ('finish','finish_return','acknowledge'):
                 raise ValueError('invalid_action')
             if action in ('finish','finish_return'):
