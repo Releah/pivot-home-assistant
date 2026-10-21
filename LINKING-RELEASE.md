@@ -98,3 +98,32 @@ consent, preserving the single-use credential boundary. Cancel during an outage
 reports failure and remains usable; remote revocation must succeed before the local
 delivery is discarded. Account names come from the authenticated task response, so existing 0.5.0
 links show the correct Pivot account without relinking or changing protected-file formats.
+
+## 0.5.2 pending-request recovery
+
+The sidebar previously rendered Waiting from local file membership before remote
+inspection. Inspection failure then appended Failed to the same screen. It also
+could not reconstruct automatic approval URLs: only the browser state's digest
+was persisted. The waiting card provided no way to reopen the original approval.
+
+The card now inspects before rendering Waiting and replaces that view on errors.
+Ended, malformed, inaccessible, and uncertain attempts offer Connect to Pivot.
+Fresh automatic requests persist their browser state in the existing protected
+pending file. Inspection returns the approval locator/state/context only to the
+live requesting HA subject, after checking remote pending status and validating
+the unconsumed, unexpired local binding. Reopening does not consume the binding
+or create a replacement request. Legacy requests without resumable state offer a
+fresh connection. Restart still revokes the previous subject-scoped request before
+removing local state, including any uncertain grant delivery.
+
+The integration version is 0.5.2. The registered frontend URL uses the shipped
+asset's SHA-256 prefix instead of a manually maintained version. The authenticated
+`pivot/link_status` response includes `integration_version` and `frontend_version`.
+After updating and restarting HA, compare those fields with the loaded module's
+`/pivot/pivot-task-card.js?v=<frontend_version>` request in browser developer tools.
+An already open page must be reloaded to replace its registered custom element.
+Do not copy approval fragments or protected pending-file contents into logs.
+
+Local verification: card regressions, all Python unittest suites, and whitespace
+checks pass. Installed HA files and served assets were not accessible from this
+workspace; matching deployed versions and live pending state remain unverified.
