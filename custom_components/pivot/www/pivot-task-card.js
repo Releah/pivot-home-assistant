@@ -4,8 +4,8 @@ class PivotTaskCard extends HTMLElement {
   connectedCallback() { if(this._hass)this.refresh(); }
   disconnectedCallback() { this.returnData=null;clearTimeout(this.pollTimer); this.generation=(this.generation||0)+1;this.replaceChildren();this.started=false; }
   element(tag,text) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
-  button(body,text,action) {const b=this.element('button',text);b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await action();}catch{body.append(this.element('p','We couldn’t connect to Pivot. Please try again.'));if(text!=='Cancel')b.textContent='Retry';}finally{b.disabled=!!b.uncertain;}};body.append(b);return b;}
-  async connect(account,manual=false) {
+  button(body,text,action) {const b=this.element('button',text);b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await action();}catch{body.replaceChildren(...[...body.children].filter(node=>node.textContent!=='Waiting for you to allow Home Assistant in Pivot…'));body.append(this.element('p','We couldn’t connect to Pivot. Please try again.'));if(text!=='Cancel')b.textContent='Retry';}finally{b.disabled=!!b.uncertain;}};body.append(b);return b;}
+  async connect(account,manual=false,resume=null) {
     const hass=this._hass,generation=this.generation;
     if(manual) {await hass.callWS({type:'pivot/link',action:'start'});await this.refresh();return;}
     const approval=new URL(account.website_url);
@@ -18,7 +18,7 @@ class PivotTaskCard extends HTMLElement {
     if(popup)popup.opener=null;
     try {
       const returnUrl=new URL('/pivot-tasks/tasks',window.location.origin).href;
-      const pending=await hass.callWS({type:'pivot/link',action:'start_return',browser_return:{returnUrl}});
+      const pending=resume || await hass.callWS({type:'pivot/link',action:'start_return',browser_return:{returnUrl}});
       if(generation!==this.generation || this._hass.user?.id!==hass.user?.id){popup?.close();return;}
       if(!/^hl1\.[A-Za-z0-9_-]{43}$/.test(pending.locator) || !/^[A-Za-z0-9_-]{43}$/.test(pending.state) || !/^[A-Za-z0-9_-]{1,3072}$/.test(pending.returnContext))throw new Error('invalid_response');
       approval.hash='settings/ha/'+pending.locator+'/'+pending.state+'/'+pending.returnContext;
@@ -54,8 +54,6 @@ class PivotTaskCard extends HTMLElement {
       if(generation!==this.generation)return;
       if(!account.installation_ready){body.append(this.element('p','Ask your household administrator to set up the Pivot connection.'));return;}
       if(account.pending){
-        body.append(this.element('p','Waiting for you to allow Home Assistant in Pivot…'));
-        this.button(body,'Cancel',async()=>{clearTimeout(this.pollTimer);await this._hass.callWS({type:'pivot/link',action:'cancel'});await this.refresh();});
         await this.review(body,generation,account);
         return;
       }
@@ -72,6 +70,8 @@ class PivotTaskCard extends HTMLElement {
       const advanced=this.element('details');advanced.append(this.element('summary','Connection settings'));
       this.button(advanced,'Disconnect',async()=>{await this._hass.callWS({type:'pivot/link',action:'unlink'});await this.refresh();});body.append(advanced);
     }catch{if(generation===this.generation){
+      body.replaceChildren();
+      if(account?.pending)this.button(body,'Connect to Pivot',()=>this.connect(account));
       body.append(this.element('p','We couldn’t finish connecting or load your tasks. Please try again.'));
       this.button(body,'Retry',()=>this.refresh());
     }}
@@ -93,12 +93,13 @@ class PivotTaskCard extends HTMLElement {
     const terminal=['expired','cancelled','unavailable'].includes(result.pairing.status) || result.link && ['revoked','expired','ineligible','invalid'].includes(result.link.effectiveStatus);
     if(terminal || result.delivery_uncertain){
       body.append(this.element('p',terminal?'This connection attempt has ended. Please try again.':'The connection was interrupted. Please try again.'));
-      this.button(body,'Retry',()=>this.connect(account));return;
+      this.button(body,'Connect to Pivot',()=>this.connect(account));return;
     }
     if(result.awaiting_delivery){await this._hass.callWS({type:'pivot/link',action:'acknowledge'});if(generation===this.generation)await this.refresh();return;}
+    body.append(this.element('p','Waiting for you to allow Home Assistant in Pivot…'));
+    this.button(body,'Cancel',async()=>{clearTimeout(this.pollTimer);await this._hass.callWS({type:'pivot/link',action:'cancel'});await this.refresh();});
     if(result.automatic_delivery){
-      body.append(this.element('p','Finish approval in the Pivot tab. If that tab was closed, try again.'));
-      this.button(body,'Retry',()=>this.connect(account));
+      this.button(body,result.approval?'Open approval page':'Connect to Pivot',()=>this.connect(account,false,result.approval));
     }else{
       const advanced=this.element('details');advanced.open=!!this.manualOpen;advanced.ontoggle=()=>{this.manualOpen=advanced.open;};advanced.append(this.element('summary','Advanced: manual connection'));body.append(advanced);
       const code=this.element('input');code.readOnly=true;code.value=account.locator||'';

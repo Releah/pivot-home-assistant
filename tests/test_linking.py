@@ -146,7 +146,24 @@ class AutomaticTests(unittest.TestCase):
             with patch.object(mod,'load_provisioning',load),patch.object(mod,'load_private_json',load),patch.object(mod,'save_private_json',save):
                 manager=mod.LinkManager(path,executor,remote)
                 started=await manager.run('ha-new','start_return',browser_return={'returnUrl':'https://ha.example.invalid/pivot-tasks/tasks'})
-                self.assertNotIn('redemptionProof',started);self.assertNotIn(started['state'],repr(files))
+                self.assertNotIn('redemptionProof',started);self.assertEqual(files[pending]['ha-new']['approval_state'],started['state'])
+                # Reopening after restart returns exactly this person's original approval.
+                original_remote = manager.request
+                async def inspect_remote(settings, subject, operation, body):
+                    if operation == 'inspect':return {'pairing':{'status':'pending'}}
+                    return await original_remote(settings, subject, operation, body)
+                manager = mod.LinkManager(path, executor, inspect_remote)
+                inspected = await manager.run('ha-new', 'inspect')
+                self.assertEqual(inspected['approval'], started)
+                self.assertNotIn('redemptionProof', inspected['approval'])
+                self.assertNotIn('consumed', files[pending]['ha-new']['browser_return'])
+                legacy = copy.deepcopy(files[pending]['ha-new'])
+                del files[pending]['ha-new']['approval_state']
+                self.assertEqual((await manager.run('ha-new', 'inspect'))['pairing']['status'], 'unavailable')
+                files[pending]['ha-new'] = copy.deepcopy(legacy)
+                files[pending]['ha-new']['browser_return']['expires_at'] = 0
+                self.assertEqual((await manager.run('ha-new', 'inspect'))['pairing']['status'], 'unavailable')
+                files[pending]['ha-new'] = legacy
                 returned={'pairingId':'synthetic-pair-1','state':started['state'],'result':'synthetic-authenticated-result'}
                 with self.assertRaisesRegex(ValueError,'pairing_required'):
                     await manager.run('ha-other','finish_return',browser_return=returned)
@@ -219,6 +236,7 @@ class StaleProofTests(unittest.TestCase):
                 self.assertIn('ha-a',files[pending])
                 # Recovery also works if an old local entry no longer has a proof.
                 del files[pending]['ha-a']['redemptionProof']
+                self.assertEqual((await manager.run('ha-a','inspect'))['pairing']['status'], 'unavailable')
                 await manager.run('ha-a','cancel')
                 self.assertEqual(set(files[pending]),{'ha-b'})
                 self.assertEqual(calls[-1],('ha-a','cancel',{}))

@@ -1,6 +1,8 @@
 """Private per-request tasks: no entities, recorder state or credential diagnostics."""
 import asyncio
 import json
+from hashlib import sha256
+from pathlib import Path
 from .transport import transport_settings
 from .provisioning import load_provisioning
 from .linking import LinkManager, LinkRequestError
@@ -8,6 +10,9 @@ from .linking import LinkManager, LinkRequestError
 import aiohttp
 import voluptuous as vol
 from homeassistant.components import websocket_api
+
+INTEGRATION_VERSION = json.loads((Path(__file__).parent / "manifest.json").read_text())["version"]
+FRONTEND_VERSION = sha256((Path(__file__).parent / "www" / "pivot-task-card.js").read_bytes()).hexdigest()[:12]
 
 DOMAIN = "pivot"
 CONFIG_SCHEMA = vol.Schema({DOMAIN: vol.Schema({vol.Required("provisioning_file"): str})}, extra=vol.ALLOW_EXTRA)
@@ -112,6 +117,7 @@ async def async_setup(hass, config):
             current = await hass.async_add_executor_job(load_provisioning, path)
             pending = await manager.pending()
             connection.send_result(msg['id'], {'subject':user.id, 'ha_name':user.name,
+                'integration_version':INTEGRATION_VERSION, 'frontend_version':FRONTEND_VERSION,
                 'installation_ready':bool(current['installation_credential']),
                 'linked':user.id in current['members'], 'pending':user.id in pending,
                 'locator':pending.get(user.id, {}).get('locator'),
@@ -158,7 +164,7 @@ async def async_setup_entry(hass, entry):
             domain_data['card_registered'] = True
         from homeassistant.components import frontend
         from .dashboard import async_setup_dashboard
-        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.5.1')
+        frontend.add_extra_js_url(hass, f'/pivot/pivot-task-card.js?v={FRONTEND_VERSION}')
         if await async_setup_dashboard(hass):
             domain_data['dashboard_owned'] = True
         domain_data['entry'] = entry.entry_id

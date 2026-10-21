@@ -141,7 +141,7 @@ test('lost acknowledgement resumes automatically, while expired delivery offers 
  await nodes(card).find(e=>e.textContent==='Retry').onclick();
  assert.equal(acks,2);assert.ok(nodes(card).some(e=>e.textContent==='Connected as Synthetic Person'));
  pending=true;card._hass.callWS=async m=>m.type==='pivot/link_status'?{installation_ready:true,pending:true}: {awaiting_delivery:true,pairing:{status:'cancelled'},link:{effectiveStatus:'revoked'}};
- await card.refresh();assert.ok(nodes(card).some(e=>e.textContent==='Retry'));assert.equal(acks,2);
+ await card.refresh();assert.ok(nodes(card).some(e=>e.textContent==='Connect to Pivot'));assert.equal(acks,2);
 });
 test('manual code and explicit confirmation stay under Advanced',async()=>{
  const card=fixture(async()=>({}));card._hass.callWS=async m=>m.type==='pivot/link_status'?{installation_ready:true,pending:true,locator:'hl1.synthetic'}:{pairing:{status:'approved',approvedUserId:'user',consentId:'consent',policy:{read:true}},approved_user_name:'Synthetic'};
@@ -164,4 +164,32 @@ test('approval opens separately so waiting HA keeps Cancel available',async()=>{
  assert.equal(popup.opener,null);assert.ok(popup.location.href.includes('#settings/ha/'));
  const cancel=nodes(card).find(e=>e.textContent==='Cancel');assert.ok(cancel);await cancel.onclick();
  assert.equal(pending,false);
+});
+
+test('inspection failure replaces waiting and permits recovery without exposing errors',async()=>{
+ const card=fixture(async()=>({}));
+ card._hass.callWS=async m=>{if(m.type==='pivot/link_status')return {installation_ready:true,pending:true};throw Error('private detail');};
+ await card.refresh();
+ assert.equal(nodes(card).some(e=>e.textContent?.includes('Waiting for')),false);
+ assert.ok(nodes(card).some(e=>e.textContent==='Connect to Pivot'));
+ assert.ok(nodes(card).some(e=>e.textContent==='Retry'));
+ assert.equal(nodes(card).some(e=>e.textContent?.includes('private detail')),false);
+});
+
+test('reopened pending approval opens the original URL without starting another request',async()=>{
+ const approval={locator:'hl1.'+'L'.repeat(43),state:'S'.repeat(43),returnContext:'C'.repeat(80)};
+ let assigned;const calls=[];
+ const card=fixture(async()=>({}),'pivot-task-card',{location:{protocol:'https:',origin:'https://ha.example.invalid',assign:url=>{assigned=url;}}});
+ card._hass.callWS=async m=>{calls.push(m);if(m.type==='pivot/link_status')return {installation_ready:true,pending:true,website_url:'https://pivot.example.invalid'};return {pairing:{status:'pending'},automatic_delivery:true,approval};};
+ await card.refresh();await nodes(card).find(e=>e.textContent==='Open approval page').onclick();
+ assert.equal(assigned,'https://pivot.example.invalid/#settings/ha/'+approval.locator+'/'+approval.state+'/'+approval.returnContext);
+ assert.equal(calls.some(m=>m.action==='start_return'),false);
+});
+
+test('ended and uncertain requests offer Connect without Waiting',async()=>{
+ for(const result of [{pairing:{status:'expired'}},{pairing:{status:'unavailable'}},{pairing:{status:'approved'},delivery_uncertain:true}]){
+  const card=fixture(async()=>({}));card._hass.callWS=async m=>m.type==='pivot/link_status'?{installation_ready:true,pending:true}:result;
+  await card.refresh();assert.ok(nodes(card).some(e=>e.textContent==='Connect to Pivot'));
+  assert.equal(nodes(card).some(e=>e.textContent?.includes('Waiting for')),false);
+ }
 });

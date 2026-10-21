@@ -68,6 +68,8 @@ class LinkManager:
                     now = time.time()
                     _, binding = create_binding(subject, value['pairingId'], min(value['expiresAt']/1000, now+86400), now, state=state)
                     value['browser_return'] = binding
+                    # Protected, subject-scoped storage allows reopening approval.
+                    value['approval_state'] = state
                 pending[subject] = value
                 try:
                     await self.executor(save_private_json, self.pending_path, pending)
@@ -105,6 +107,8 @@ class LinkManager:
                 await self.executor(save_private_json, self.path, settings)
                 await self.executor(save_private_json, self.pending_path, pending)
                 return {'cancelled':True}
+            if action == 'inspect' and not all(isinstance(value.get(key), str) and value[key] for key in ('pairingId', 'redemptionProof', 'locator')):
+                return {'pairing':{'status':'unavailable'}, 'awaiting_delivery':False}
             proof = {'pairingId':value['pairingId'], 'redemptionProof':value['redemptionProof']}
             if action == 'inspect':
                 try:
@@ -114,8 +118,18 @@ class LinkManager:
                         raise
                     return {'pairing':{'status':'unavailable'}, 'awaiting_delivery':False}
 
+                approval = None
+                if result['pairing']['status'] == 'pending' and 'browser_return' in value and not value.get('redemption_started'):
+                    try:
+                        # Validate a copy: reopening must not consume the return.
+                        consume_binding(dict(value['browser_return']), subject=subject, pairing_id=value['pairingId'],
+                                        state=value.get('approval_state'), now=time.time())
+                        approval = {'locator':value['locator'], 'state':value['approval_state'], 'returnContext':value['returnContext']}
+                    except (ValueError, TypeError, KeyError):
+                        return {'pairing':{'status':'unavailable'}, 'awaiting_delivery':False}
+
                 # An explicit HA-person confirmation must match this server inspection.
-                return {'pairing':result['pairing'], 'approved_user_name':result.get('approvedUserName'),
+                return {'approval':approval, 'pairing':result['pairing'], 'approved_user_name':result.get('approvedUserName'),
                         'link':result.get('link'), 'awaiting_delivery': 'issued' in value, 'automatic_delivery':'browser_return' in value, 'delivery_uncertain':bool(value.get('redemption_started')) and 'issued' not in value}
             if action not in ('finish','finish_return','acknowledge'):
                 raise ValueError('invalid_action')
