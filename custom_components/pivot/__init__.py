@@ -3,7 +3,7 @@ import asyncio
 import json
 from .transport import transport_settings
 from .provisioning import load_provisioning
-from .linking import LinkManager
+from .linking import LinkManager, LinkRequestError
 
 import aiohttp
 import voluptuous as vol
@@ -33,9 +33,13 @@ async def async_setup(hass, config):
             async with session.post(origin + '/api/ha/v1/link/' + operation, headers=headers,
                     json=body, ssl=tls, allow_redirects=False) as response:
                 raw = await response.content.read(1048577)
-                if response.status != 200 or len(raw) > 1048576:
+                if len(raw) > 1048576:
                     raise ValueError('link_request_failed')
-                return json.loads(raw)
+                result = json.loads(raw)
+                if response.status != 200:
+                    code = result.get('error') if isinstance(result, dict) else None
+                    raise LinkRequestError(code if code in ('pairing_access_required', 'pairing_unavailable') else 'unavailable')
+                return result
 
     manager = LinkManager(path, hass.async_add_executor_job, link_request)
 
@@ -154,7 +158,7 @@ async def async_setup_entry(hass, entry):
             domain_data['card_registered'] = True
         from homeassistant.components import frontend
         from .dashboard import async_setup_dashboard
-        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.5.0')
+        frontend.add_extra_js_url(hass, '/pivot/pivot-task-card.js?v=0.5.1')
         if await async_setup_dashboard(hass):
             domain_data['dashboard_owned'] = True
         domain_data['entry'] = entry.entry_id

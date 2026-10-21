@@ -33,10 +33,6 @@ test('HA card does not retry uncertain completion or report success; disconnect 
 });
 
 
-test('HACS bundled card matches the manually installed card',()=>{
-  assert.equal(fs.readFileSync('custom_components/pivot/www/pivot-task-card.js','utf8'),fs.readFileSync('custom_components/pivot/www/pivot-task-card.js','utf8'));
-});
-
 test('linking shows identity and scope before explicit confirmation; no task data before linking',async()=>{
   const calls=[];
   const card=fixture(async()=>({}));
@@ -48,11 +44,11 @@ test('linking shows identity and scope before explicit confirmation; no task dat
   };
   await card.refresh();
   assert.equal(calls.some(c=>c.type==='pivot/tasks'),false);
-  const body=card.children[0].children[0];
+  const body=card.children[0].children[0].children.find(e=>e.children?.some(c=>c.textContent==='Advanced: manual connection'));
   assert.ok(calls.some(c=>c.action==='inspect'));
   assert.equal(calls.some(c=>c.action==='finish'),false);
-  assert.ok(body.children.some(c=>c.textContent?.includes('synthetic-pivot')));
-  const confirm=body.children.find(c=>c.textContent==='Confirm these accounts and permissions');
+  assert.ok(body.children.some(c=>c.textContent?.includes('Synthetic Pivot person')));
+  const confirm=body.children.find(c=>c.textContent==='Confirm connection');
   await confirm.onclick();
   const finish=calls.find(c=>c.action==='finish');
   assert.deepEqual(JSON.parse(JSON.stringify(finish.confirmation)),{userId:'synthetic-pivot',consentId:'synthetic-consent'});
@@ -81,7 +77,7 @@ test('an earlier account response cannot repopulate the dashboard after switchin
 test('missing integration commands show setup instructions without exposing raw errors',async()=>{
  const card=fixture(async()=>({}));card._hass.callWS=async()=>{throw {code:'unknown_command',message:'synthetic-sensitive-value'};};await card.refresh();
  const body=card.children[0].children[0];const messages=body.children.map(e=>e.textContent||'').join(' ');
- assert.ok(messages.includes('restart Home Assistant'));assert.equal(messages.includes('synthetic-sensitive-value'),false);
+ assert.ok(messages.includes('Please try again'));assert.equal(messages.includes('synthetic-sensitive-value'),false);
 });
 
 
@@ -93,7 +89,7 @@ test('Connect navigates to approval and a fresh dashboard automatically finishes
   const account={installation_ready:true,linked:false,pending:false,website_url:'https://pivot.example.invalid',subject:'synthetic-a'};
   card._hass.callWS=async message=>{calls.push(message);if(message.type==='pivot/link_status')return account;if(message.action==='start_return')return {locator,state,returnContext:context};return {};};
   await card.refresh();
-  await card.children[0].children[0].children.find(e=>e.textContent==='Connect Pivot account').onclick();
+  await card.children[0].children[0].children.find(e=>e.textContent==='Connect to Pivot').onclick();
   assert.equal(assigned,'https://pivot.example.invalid/#settings/ha/'+locator+'/'+state+'/'+context);
   assert.deepEqual(JSON.parse(JSON.stringify(calls.find(c=>c.action==='start_return').browser_return)),{returnUrl:'https://ha.example.invalid/pivot-tasks/tasks'});
   const returning={location:{hash:'#pivot-return/'+pairingId+'/'+state+'/'+result,pathname:'/pivot-tasks/tasks',search:''},history:{replaceState(){cleared=true;returning.location.hash='';}}};
@@ -105,7 +101,7 @@ test('Connect navigates to approval and a fresh dashboard automatically finishes
     if(message.type==='pivot/tasks')return {items:[]};return {};
   };
   await next.refresh();
-  assert.ok(next.children[0].children[0].children.some(e=>e.textContent==='Connected'));
+  assert.ok(next.children[0].children[0].children.some(e=>e.textContent?.startsWith('Connected')));
   assert.equal(calls.filter(c=>c.action==='finish_return').length,1);
   assert.equal(calls.some(c=>c.action==='finish'),false);
   await next.refresh();assert.equal(calls.filter(c=>c.action==='finish_return').length,1);
@@ -116,6 +112,56 @@ test('a rejected automatic return never displays Connected or requests private t
   const card=fixture(async()=>({}),'pivot-dashboard-card',browser);
   card._hass.callWS=async message=>{calls.push(message);throw {code:'link_failed'};};
   await card.refresh();assert.equal(calls.length,1);assert.equal(calls[0].action,'finish_return');
-  assert.equal(card.children[0].children[0].children.some(e=>e.textContent==='Connected'),false);
+  assert.equal(card.children[0].children[0].children.some(e=>e.textContent?.startsWith('Connected')),false);
   assert.equal(calls.some(c=>c.type==='pivot/tasks'),false);
+});
+
+const nodes=e=>[e,...(e.children||[]).flatMap(nodes)];
+test('waiting keeps codes advanced, restores failed Cancel, then cancels successfully',async()=>{
+ let pending=true,fail=true;const calls=[];
+ const card=fixture(async()=>({}));card._hass.callWS=async m=>{
+  calls.push(m);if(m.type==='pivot/link_status')return {installation_ready:true,pending,linked:false,locator:'synthetic'};
+  if(m.action==='inspect')return {automatic_delivery:true,pairing:{status:'pending'}};
+  if(m.action==='cancel'){if(fail)throw Error('private detail');pending=false;}return {};
+ };
+ await card.refresh();let cancel=nodes(card).find(e=>e.textContent==='Cancel');
+ assert.equal(nodes(card).some(e=>e.textContent==='Manual connection code'),false);
+ await cancel.onclick();assert.equal(cancel.disabled,false);assert.equal(pending,true);
+ fail=false;await cancel.onclick();assert.equal(pending,false);assert.ok(nodes(card).some(e=>e.textContent==='Connect to Pivot'));
+ assert.equal(nodes(card).some(e=>e.textContent?.includes('private detail')),false);
+});
+test('lost acknowledgement resumes automatically, while expired delivery offers a fresh secure attempt',async()=>{
+ let pending=true,acks=0;const card=fixture(async()=>({}));
+ card._hass.callWS=async m=>{
+  if(m.type==='pivot/link_status')return {installation_ready:true,pending,linked:!pending,pivot_user_name:'Synthetic Person'};
+  if(m.action==='inspect')return {awaiting_delivery:true,pairing:{status:'redeemed'},link:{effectiveStatus:'awaiting_delivery'}};
+  if(m.action==='acknowledge'){acks++;if(acks===1)throw Error('timeout');pending=false;}return {items:[]};
+ };
+ await card.refresh();assert.ok(nodes(card).some(e=>e.textContent==='Retry'));
+ await nodes(card).find(e=>e.textContent==='Retry').onclick();
+ assert.equal(acks,2);assert.ok(nodes(card).some(e=>e.textContent==='Connected as Synthetic Person'));
+ pending=true;card._hass.callWS=async m=>m.type==='pivot/link_status'?{installation_ready:true,pending:true}: {awaiting_delivery:true,pairing:{status:'cancelled'},link:{effectiveStatus:'revoked'}};
+ await card.refresh();assert.ok(nodes(card).some(e=>e.textContent==='Retry'));assert.equal(acks,2);
+});
+test('manual code and explicit confirmation stay under Advanced',async()=>{
+ const card=fixture(async()=>({}));card._hass.callWS=async m=>m.type==='pivot/link_status'?{installation_ready:true,pending:true,locator:'hl1.synthetic'}:{pairing:{status:'approved',approvedUserId:'user',consentId:'consent',policy:{read:true}},approved_user_name:'Synthetic'};
+ await card.refresh();const details=nodes(card).find(e=>e.children?.some(c=>c.textContent==='Advanced: manual connection'));
+ assert.ok(details);assert.ok(nodes(details).some(e=>e.textContent==='Confirm connection'));
+ assert.ok(nodes(details).some(e=>e.value==='hl1.synthetic'));
+});
+
+test('approval opens separately so waiting HA keeps Cancel available',async()=>{
+ let pending=false;const popup={location:{},opener:{},close(){}};
+ const browser={location:{protocol:'https:',origin:'https://ha.example.invalid',hash:''},open:()=>popup};
+ const card=fixture(async()=>({}),'pivot-task-card',browser);
+ card._hass.callWS=async m=>{
+  if(m.type==='pivot/link_status')return {installation_ready:true,pending,website_url:'https://pivot.example.invalid',linked:false};
+  if(m.action==='start_return'){pending=true;return {locator:'hl1.'+'L'.repeat(43),state:'S'.repeat(43),returnContext:'C'.repeat(80)};}
+  if(m.action==='inspect')return {automatic_delivery:true,pairing:{status:'pending'}};
+  if(m.action==='cancel')pending=false;return {};
+ };
+ await card.refresh();await nodes(card).find(e=>e.textContent==='Connect to Pivot').onclick();
+ assert.equal(popup.opener,null);assert.ok(popup.location.href.includes('#settings/ha/'));
+ const cancel=nodes(card).find(e=>e.textContent==='Cancel');assert.ok(cancel);await cancel.onclick();
+ assert.equal(pending,false);
 });
