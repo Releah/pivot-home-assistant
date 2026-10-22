@@ -101,3 +101,10 @@ under **Advanced: manual connection**, including for HA accessed over HTTP.
 Installation keys and protected-file delivery remain administrator setup concerns.
 See [release verification and instructions](LINKING-RELEASE.md). Nothing is deployed
 by this source change.
+
+API diagnostics and authoritative link reconciliation are described in
+[INTEGRATION-DIAGNOSTICS.md](INTEGRATION-DIAGNOSTICS.md), including request/response
+lifecycle, safe log interpretation, two-person testing and deployment order.
+`custom_components/pivot/api.py` owns bounded API requests and sanitized logging.
+Run component regressions with `python3 -m unittest discover -s tests -p 'test_*.py'`
+and card regressions with `node --test tests/dashboard-card.test.cjs`.

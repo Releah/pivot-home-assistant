@@ -193,3 +193,20 @@ test('ended and uncertain requests offer Connect without Waiting',async()=>{
   assert.equal(nodes(card).some(e=>e.textContent?.includes('Waiting for')),false);
  }
 });
+
+test('loading card script twice is idempotent across resource URLs',()=>{
+ const cards=new Map(),window={};
+ const context=vm.createContext({window,HTMLElement:Element,customElements:{get:name=>cards.get(name),define:(name,value)=>{assert.equal(cards.has(name),false);cards.set(name,value);}}});
+ const source=fs.readFileSync('custom_components/pivot/www/pivot-task-card.js','utf8');
+ vm.runInContext(source,context);vm.runInContext(source,context);
+ assert.equal(cards.size,2);assert.equal(window.customCards.length,2);
+});
+
+test('failed connection controls keep distinct labels and one error message',async()=>{
+ const card=fixture(async()=>({})),body=new Element();
+ const fail=async()=>{throw Error('synthetic');};
+ const connect=card.button(body,'Connect to Pivot',fail),cancel=card.button(body,'Cancel',fail);
+ await connect.onclick();await connect.onclick();await cancel.onclick();
+ assert.equal(connect.textContent,'Connect to Pivot');assert.equal(cancel.textContent,'Cancel');
+ assert.equal(body.children.filter(e=>e.textContent==='We couldn’t connect to Pivot. Please try again.').length,1);
+});
