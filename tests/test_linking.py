@@ -250,4 +250,45 @@ class StaleProofTests(unittest.TestCase):
                 self.assertEqual(set(files[pending]),{'ha-b'})
         asyncio.run(exercise())
 
+
+
+class ReconciliationTests(unittest.TestCase):
+    def test_two_people_revocation_outage_and_reconnection(self):
+        async def exercise():
+            path='/protected/pivot.json'; pending='/protected/pending-links.json'
+            files={path:{'installation_credential':'synthetic','members':{
+                subject:{'link_id':subject,'credential':'synthetic'} for subject in ('ha-a','ha-b')}},
+                pending:{'ha-a':{'issued':{}},'ha-b':{'issued':{}}}}
+            statuses={'ha-a':'active','ha-b':'active'}
+            def load(name):return copy.deepcopy(files[name])
+            def save(name,value):files[name]=copy.deepcopy(value)
+            async def executor(fn,*args):return fn(*args)
+            async def remote(settings,subject,operation,body):
+                if operation=='status':
+                    if statuses[subject]=='timeout':raise asyncio.TimeoutError()
+                    return {'status':statuses[subject]}
+                if operation=='start':return {'pairingId':subject,'redemptionProof':'synthetic','locator':'synthetic'}
+                if operation=='finish':return {'linkId':subject+'-new','credential':'synthetic-new','userId':subject+'-pivot','consentId':'synthetic'}
+                return {}
+            with patch.object(mod,'load_provisioning',load),patch.object(mod,'load_private_json',load),patch.object(mod,'save_private_json',save):
+                manager=mod.LinkManager(path,executor,remote)
+                self.assertEqual(await manager.reconcile('ha-a'),'active')
+                statuses['ha-a']='timeout'
+                with self.assertRaises(asyncio.TimeoutError):await manager.reconcile('ha-a')
+                self.assertIn('ha-a',files[path]['members'])
+                for subject,terminal in [('ha-a','revoked'),('ha-b','expired')]:
+                    other='ha-b' if subject=='ha-a' else 'ha-a'
+                    before=copy.deepcopy(files[path]['members'][other])
+                    statuses[subject]=terminal
+                    self.assertEqual(await manager.reconcile(subject),terminal)
+                    self.assertNotIn(subject,files[path]['members']);self.assertNotIn(subject,files[pending])
+                    self.assertEqual(files[path]['members'][other],before)
+                    await manager.run(subject,'start')
+                    await manager.run(subject,'finish',{'userId':subject+'-pivot','consentId':'synthetic'})
+                    statuses[subject]='active'
+                    manager=mod.LinkManager(path,executor,remote)
+                    self.assertEqual(await manager.reconcile(subject),'active')
+                    self.assertEqual(files[path]['members'][subject]['link_id'],subject+'-new')
+        asyncio.run(exercise())
+
 if __name__=='__main__':unittest.main()

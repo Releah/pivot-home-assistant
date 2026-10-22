@@ -1,4 +1,5 @@
 """HA UI setup; config entries contain only paths, never credentials."""
+import logging
 from pathlib import Path
 from urllib.parse import urlsplit
 import voluptuous as vol
@@ -8,20 +9,27 @@ from .enrollment import generate_enrollment, decrypt_enrollment
 from .provisioning import load_provisioning, save_private_json
 from .transport import transport_settings
 
+_LOGGER = logging.getLogger(__name__)
 DOMAIN = 'pivot'
 
 
 async def async_probe(origin, tls):
     import aiohttp
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10), cookie_jar=aiohttp.DummyCookieJar(),
-            skip_auto_headers={'Accept-Encoding'}) as session:
-        async with session.get(origin + '/api/ha/v1/tasks', ssl=tls, allow_redirects=False) as response:
-            raw = await response.content.read(4097)
-            if response.status != 401 or len(raw) > 4096:
-                raise ValueError('cannot_connect')
-            import json
-            if json.loads(raw).get('error') != 'ha_installation_required':
-                raise ValueError('cannot_connect')
+    status = None
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10), cookie_jar=aiohttp.DummyCookieJar(),
+                skip_auto_headers={'Accept-Encoding'}) as session:
+            async with session.get(origin + '/api/ha/v1/tasks', ssl=tls, allow_redirects=False) as response:
+                status = response.status
+                raw = await response.content.read(4097)
+                if status != 401 or len(raw) > 4096:
+                    raise ValueError('cannot_connect')
+                import json
+                if json.loads(raw).get('error') != 'ha_installation_required':
+                    raise ValueError('cannot_connect')
+    except Exception as error:
+        _LOGGER.warning('Pivot operation=connection/probe status=%s exception=%s', status, type(error).__name__)
+        raise
 
 
 def website(value):

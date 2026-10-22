@@ -10,9 +10,10 @@ from .provisioning import load_provisioning, load_private_json, save_private_jso
 
 class LinkRequestError(ValueError):
     """A fixed upstream code, never raw response text or credentials."""
-    def __init__(self, code):
+    def __init__(self, code, status=None):
         super().__init__('link_request_failed')
         self.code = code
+        self.status = status
 
 
 class LinkManager:
@@ -28,6 +29,29 @@ class LinkManager:
             return await self.executor(load_private_json, self.pending_path)
         except FileNotFoundError:
             return {}
+
+    async def reconcile(self, subject):
+        """Only explicit Pivot status can discard a saved binding; outages retain it."""
+        async with self.lock:
+            settings = await self.executor(load_provisioning, self.path)
+            binding = settings['members'].get(subject)
+            if not binding:
+                return 'missing'
+            result = await self.request(settings, subject, 'status',
+                {'linkId': binding['link_id'], 'credential': binding['credential']})
+            status = result.get('status')
+            if status not in ('active', 'awaiting_delivery', 'missing', 'revoked', 'expired', 'ineligible', 'invalid'):
+                raise ValueError('invalid_response')
+            if status in ('ineligible', 'invalid'):
+                # End unusable remote grants too, so a fresh approval is possible.
+                await self.request(settings, subject, 'cancel', {})
+            if status in ('missing', 'revoked', 'expired', 'ineligible', 'invalid'):
+                del settings['members'][subject]
+                await self.executor(save_private_json, self.path, settings)
+                pending = await self.pending()
+                pending.pop(subject, None)
+                await self.executor(save_private_json, self.pending_path, pending)
+            return status
 
     async def run(self, subject, action, confirmation=None, browser_return=None):
         async with self.lock:

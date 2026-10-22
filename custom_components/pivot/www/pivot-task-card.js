@@ -1,10 +1,11 @@
+(() => {
 class PivotTaskCard extends HTMLElement {
   setConfig(config) { this.config = config; }
   set hass(value) { const changed=this._hass?.user?.id!==value.user?.id;if(changed)this.returnData=null;this._hass=value;if(!this.started||changed){this.started=true;this.refresh();} }
   connectedCallback() { if(this._hass)this.refresh(); }
   disconnectedCallback() { this.returnData=null;clearTimeout(this.pollTimer); this.generation=(this.generation||0)+1;this.replaceChildren();this.started=false; }
   element(tag,text) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
-  button(body,text,action) {const b=this.element('button',text);b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await action();}catch{body.replaceChildren(...[...body.children].filter(node=>node.textContent!=='Waiting for you to allow Home Assistant in Pivot…'));body.append(this.element('p','We couldn’t connect to Pivot. Please try again.'));if(text!=='Cancel')b.textContent='Retry';}finally{b.disabled=!!b.uncertain;}};body.append(b);return b;}
+  button(body,text,action) {const b=this.element('button',text);b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await action();}catch(error){console.warn('Pivot card operation=action code=%s',['secure_website_required','secure_return_required','invalid_response','link_exists','link_failed'].includes(error?.code||error?.message)?(error.code||error.message):'unavailable');body.replaceChildren(...[...body.children].filter(node=>node.textContent!=='Waiting for you to allow Home Assistant in Pivot…'));if(!body.pivotError){body.pivotError=this.element('p','We couldn’t connect to Pivot. Please try again.');body.append(body.pivotError);}}finally{b.disabled=!!b.uncertain;}};body.append(b);return b;}
   async connect(account,manual=false,resume=null) {
     const hass=this._hass,generation=this.generation;
     if(manual) {await hass.callWS({type:'pivot/link',action:'start'});await this.refresh();return;}
@@ -57,6 +58,10 @@ class PivotTaskCard extends HTMLElement {
         await this.review(body,generation,account);
         return;
       }
+      if(account.link_state==='awaiting_delivery'){
+        body.append(this.element('p','Pivot has not confirmed delivery of this connection. Disconnect and connect again.'));
+        this.button(body,'Disconnect',async()=>{await this._hass.callWS({type:'pivot/link',action:'unlink'});await this.refresh();});return;
+      }
       if(!account.linked){
         this.button(body,'Connect to Pivot',()=>this.connect(account));
         const advanced=this.element('details');advanced.append(this.element('summary','Advanced: manual connection'));
@@ -69,7 +74,9 @@ class PivotTaskCard extends HTMLElement {
       this.button(body,'Refresh',()=>this.refresh());
       const advanced=this.element('details');advanced.append(this.element('summary','Connection settings'));
       this.button(advanced,'Disconnect',async()=>{await this._hass.callWS({type:'pivot/link',action:'unlink'});await this.refresh();});body.append(advanced);
-    }catch{if(generation===this.generation){
+      if(typeof setTimeout==='function')this.pollTimer=setTimeout(()=>{if(generation===this.generation)this.refresh();},30000);
+    }catch(error){if(generation===this.generation){
+      if(error?.code==='link_revoked'){await this.refresh();return;}
       body.replaceChildren();
       if(account?.pending)this.button(body,'Connect to Pivot',()=>this.connect(account));
       body.append(this.element('p','We couldn’t finish connecting or load your tasks. Please try again.'));
@@ -118,7 +125,7 @@ class PivotTaskCard extends HTMLElement {
   getCardSize(){return 4;}
 }
 window.customCards=window.customCards||[];
-window.customCards.push({type:'pivot-task-card',name:'Pivot household tasks',description:'Private tasks with per-person account linking.'});
+if(!window.customCards.some(card=>card.type==='pivot-task-card'))window.customCards.push({type:'pivot-task-card',name:'Pivot household tasks',description:'Private tasks with per-person account linking.'});
 if(!customElements.get('pivot-task-card'))customElements.define('pivot-task-card',PivotTaskCard);
 
 
@@ -184,5 +191,7 @@ class PivotDashboardCard extends PivotTaskCard {
   }
   getCardSize(){return 12;}
 }
-window.customCards.push({type:'pivot-dashboard-card',name:'Pivot task dashboard',description:'Personal priorities, target calendar and task progress.'});
+if(!window.customCards.some(card=>card.type==='pivot-dashboard-card'))window.customCards.push({type:'pivot-dashboard-card',name:'Pivot task dashboard',description:'Personal priorities, target calendar and task progress.'});
 if(!customElements.get('pivot-dashboard-card'))customElements.define('pivot-dashboard-card',PivotDashboardCard);
+
+})();
