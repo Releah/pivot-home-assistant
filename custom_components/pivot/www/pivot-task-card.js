@@ -68,9 +68,9 @@ class PivotTaskCard extends HTMLElement {
         advanced.append(this.element('p','Use this only if your browser cannot return from Pivot.'));
         this.button(advanced,'Start manual connection',()=>this.connect(account,true));body.append(advanced);return;
       }
-      const {items,accountName}=await this._hass.callWS({type:'pivot/tasks'});if(generation!==this.generation)return;
+      const {items,accountName,calendarItems}=await this._hass.callWS({type:'pivot/tasks'});if(generation!==this.generation)return;
       body.append(this.element('p',(accountName||account.pivot_user_name) ? `Connected as ${accountName||account.pivot_user_name}` : 'Connected to your Pivot account'));
-      this.renderTasks(body,items,generation);
+      this.renderTasks(body,items,generation,calendarItems);
       this.button(body,'Refresh',()=>this.refresh());
       const advanced=this.element('details');advanced.append(this.element('summary','Connection settings'));
       this.button(advanced,'Disconnect',async()=>{await this._hass.callWS({type:'pivot/link',action:'unlink'});await this.refresh();});body.append(advanced);
@@ -85,7 +85,7 @@ class PivotTaskCard extends HTMLElement {
   }
   renderTasks(body,items,generation) {
       for(const item of items){
-        const row=this.element('p');row.append(this.element('span',`${item.title} (${item.ownership.mode}) `));
+        const row=this.element('p');row.append(this.element('span',`${item.projectTitle?item.projectTitle+' · ':''}${item.title} (${item.ownership.mode}) `));
         if(item.status==='completed')row.append(document.createTextNode('Completed'));
         else {const button=this.button(row,'Complete',async()=>{try{
           await this._hass.callWS({type:'pivot/complete',task_id:item.id,etag:`"task-${item.id}-v${item.version}"`});
@@ -130,7 +130,7 @@ if(!customElements.get('pivot-task-card'))customElements.define('pivot-task-card
 
 
 class PivotDashboardCard extends PivotTaskCard {
-  renderTasks(body,items,generation) {
+  renderTasks(body,items,generation,calendarItems) {
     const style=this.element('style',`
       pivot-dashboard-card ha-card{display:block;max-width:1400px;margin:16px auto;background:var(--card-background-color);border-radius:20px}
       pivot-dashboard-card .pivot-grid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(340px,1.6fr);gap:20px;margin-top:16px}
@@ -138,7 +138,7 @@ class PivotDashboardCard extends PivotTaskCard {
       pivot-dashboard-card h2{font-size:20px;margin:0 0 12px}pivot-dashboard-card .pivot-summary{font-size:16px;color:var(--secondary-text-color);margin:12px 0}
       pivot-dashboard-card .pivot-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
       pivot-dashboard-card .pivot-day{min-height:66px;padding:5px;border-radius:7px;border:1px solid var(--divider-color);font-size:12px;overflow-wrap:anywhere}
-      pivot-dashboard-card .pivot-target{display:block;margin-top:4px;color:var(--primary-color)}
+      pivot-dashboard-card .pivot-room{font-weight:650;color:var(--primary-color);margin:6px 0} pivot-dashboard-card .pivot-target{display:block;margin-top:4px;color:var(--primary-color)}
       pivot-dashboard-card button{padding:8px 12px;border-radius:10px;margin:6px 6px 6px 0;cursor:pointer;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color)}
       @media(max-width:720px){pivot-dashboard-card .pivot-grid{grid-template-columns:1fr}pivot-dashboard-card .pivot-day{min-height:48px;font-size:10px}}
     `);body.append(style);
@@ -153,6 +153,9 @@ class PivotDashboardCard extends PivotTaskCard {
     for(const task of ranked.slice(0,4))this.taskTile(priority,task,generation);
     if(!ranked.length)priority.append(this.element('p','Nothing waiting here. Enjoy the breathing room.'));
     const calendar=box('Task calendar');
+    const planned=calendarItems||active;
+    const events=planned.flatMap(t=>t.scheduledSessions?.length?t.scheduledSessions.map(s=>({date:s.date,text:(t.projectTitle?t.projectTitle+' · ':'')+t.title+' · '+s.minutes+' min'+(s.fullDay?' · larger day proposal':'')})):t.targetFinishDate?[{date:t.targetFinishDate,text:(t.projectTitle?t.projectTitle+' · ':'')+t.title}]:[]);
+    calendar.append(this.element('p','Programme sessions are provisional work allocations, not external calendar bookings.'));
     const now=new Date();const month=this.month??now.getMonth(),year=this.year??now.getFullYear();
     this.button(calendar,'Previous month',()=>{const d=new Date(year,month-1,1);this.month=d.getMonth();this.year=d.getFullYear();this.refresh();});
     calendar.append(this.element('strong',new Date(year,month,1).toLocaleDateString(undefined,{month:'long',year:'numeric'})));
@@ -164,21 +167,21 @@ class PivotDashboardCard extends PivotTaskCard {
     for(let day=1;day<=total;day++){
       const cell=this.element('div');cell.className='pivot-day';cell.append(this.element('strong',String(day)));
       const key=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      for(const task of active.filter(t=>t.targetFinishDate===key)){const label=this.element('span',task.title);label.className='pivot-target';cell.append(label);}
+      for(const event of events.filter(e=>e.date===key)){const label=this.element('span',event.text);label.className='pivot-target';cell.append(label);}
       days.append(cell);
     }
-    if(!active.some(t=>t.targetFinishDate))calendar.append(this.element('p','No target dates available. Add target dates in Pivot; older API versions do not provide them yet.'));
+    if(!events.some(e=>e.date>=`${year}-${String(month+1).padStart(2,'0')}-01`&&e.date<`${month===11?year+1:year}-${String(month===11?1:month+2).padStart(2,'0')}-01`))calendar.append(this.element('p','No planned sessions or target dates this month.'));
     const all=box('My open tasks');
     for(const task of ranked)this.taskTile(all,task,generation);
     if(!ranked.length)all.append(this.element('p','No open tasks in your permitted scope.'));
     const history=box('Recently completed');
     for(const task of [...completed].sort((a,b)=>String(b.completedAt||'').localeCompare(String(a.completedAt||''))).slice(0,8)){
-      history.append(this.element('p',task.title));
+      history.append(this.element('p',(task.projectTitle?task.projectTitle+' · ':'')+task.title));
     }
     if(!completed.length)history.append(this.element('p','Completed tasks will appear here.'));
   }
   taskTile(parent,task,generation){
-    const tile=this.element('div');tile.append(this.element('strong',task.title));
+    const tile=this.element('div');const room=this.element('p',task.projectTitle||'Room / project not supplied — update Pivot');room.className='pivot-room';tile.append(room,this.element('strong',task.title));
     const details=[task.ownership?.mode||''];
     if(Number.isInteger(task.priority))details.push(`Priority ${task.priority}`);
     if(task.targetFinishDate)details.push(`Target ${task.targetFinishDate}${task.targetFinishConfidence?' ('+task.targetFinishConfidence+')':''}`);
