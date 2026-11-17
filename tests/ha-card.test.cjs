@@ -60,7 +60,7 @@ test('dashboard ranks priorities and maps planning dates to calendar without HTM
  const items=[{id:'low',title:'Low',priority:5,targetFinishDate:'2031-04-15',status:'active',ownership:{mode:'individual'}},{id:'high',title:'<script>synthetic</script>',priority:1,targetFinishDate:'2031-04-03',status:'active',ownership:{mode:'individual'}},{id:'done',title:'Done',status:'completed',ownership:{mode:'individual'}}];
  const card=fixture(async()=>({items}),'pivot-dashboard-card');card.month=3;card.year=2031;await card.refresh();
  const body=card.children[0].children[0],grid=body.children.find(e=>e.className==='pivot-grid');
- assert.equal(grid.children[0].children[2].children[0].textContent,items[1].title);
+ assert.equal(grid.children[0].children[2].children[1].textContent,items[1].title);
  const days=grid.children[1].children.find(e=>e.className==='pivot-days');
  const dated=days.children.filter(e=>e.className==='pivot-day');
  assert.equal(dated[2].children[1].textContent,items[1].title);assert.equal(dated[14].children[1].textContent,'Low');
@@ -215,3 +215,7 @@ test('failed connection controls keep distinct labels and one error message',asy
  const task={id:'later',title:'Synthetic fitting',projectTitle:'Example hall',scheduledSessions:[{date:'2031-04-05',minutes:90},{date:'2031-04-12',minutes:60}]};
  const card=fixture(async()=>({items:[],calendarItems:[task]}),'pivot-dashboard-card');card.month=3;card.year=2031;await card.refresh();const body=card.children[0].children[0],grid=body.children.find(e=>e.className==='pivot-grid');const days=grid.children[1].children.find(e=>e.className==='pivot-days').children.filter(e=>e.className==='pivot-day');assert.equal(days[4].children[1].textContent,'Example hall · Synthetic fitting · 90 min');assert.equal(days[11].children[1].textContent,'Example hall · Synthetic fitting · 60 min');assert.ok(grid.children[2].children.some(e=>e.textContent==='No open tasks in your permitted scope.'));
  });
+
+test('HA dashboard labels identical tasks with their room before the title',async()=>{
+ const items=['Example kitchen','Example bedroom'].map((projectTitle,i)=>({id:'synthetic-'+i,title:'Sand woodwork',projectTitle,status:'todo',version:1,ownership:{mode:'unassigned'}}));const card=fixture(async()=>({items}),'pivot-dashboard-card');await card.refresh();const grid=card.children[0].children[0].children.find(e=>e.className==='pivot-grid');const tiles=grid.children[2].children.slice(1);assert.equal(tiles[0].children[0].textContent,'Example kitchen');assert.equal(tiles[1].children[0].textContent,'Example bedroom');assert.equal(tiles[0].children[1].textContent,'Sand woodwork');
+});
