@@ -138,7 +138,7 @@ class PivotDashboardCard extends PivotTaskCard {
       pivot-dashboard-card h2{font-size:20px;margin:0 0 12px}pivot-dashboard-card .pivot-summary{font-size:16px;color:var(--secondary-text-color);margin:12px 0}
       pivot-dashboard-card .pivot-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
       pivot-dashboard-card .pivot-day{min-height:66px;padding:5px;border-radius:7px;border:1px solid var(--divider-color);font-size:12px;overflow-wrap:anywhere}
-      pivot-dashboard-card .pivot-target{display:block;margin-top:4px;color:var(--primary-color)}
+      pivot-dashboard-card .pivot-room{font-weight:650;color:var(--primary-color);margin:6px 0} pivot-dashboard-card .pivot-target{display:block;margin-top:4px;color:var(--primary-color)}
       pivot-dashboard-card button{padding:8px 12px;border-radius:10px;margin:6px 6px 6px 0;cursor:pointer;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color)}
       @media(max-width:720px){pivot-dashboard-card .pivot-grid{grid-template-columns:1fr}pivot-dashboard-card .pivot-day{min-height:48px;font-size:10px}}
     `);body.append(style);
@@ -181,8 +181,8 @@ class PivotDashboardCard extends PivotTaskCard {
     if(!completed.length)history.append(this.element('p','Completed tasks will appear here.'));
   }
   taskTile(parent,task,generation){
-    const tile=this.element('div');tile.append(this.element('strong',task.title));
-    const details=[task.projectTitle||'',task.ownership?.mode||''];
+    const tile=this.element('div');const room=this.element('p',task.projectTitle||'Room / project not supplied — update Pivot');room.className='pivot-room';tile.append(room,this.element('strong',task.title));
+    const details=[task.ownership?.mode||''];
     if(Number.isInteger(task.priority))details.push(`Priority ${task.priority}`);
     if(task.targetFinishDate)details.push(`Target ${task.targetFinishDate}${task.targetFinishConfidence?' ('+task.targetFinishConfidence+')':''}`);
     tile.append(this.element('p',details.filter(Boolean).join(' \u00b7 ')));
